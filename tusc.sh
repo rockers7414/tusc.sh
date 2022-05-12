@@ -160,12 +160,15 @@ on-exit()
   [[ $OFFSET ]] || return 0
 
   OFFSET=${HEADERS[Upload-Offset]:-0}  LEFTOVER=$((SIZE - OFFSET))
-  if [[ $LEFTOVER -eq 0 ]]; then
+  if [[ $LEFTOVER -eq 0 ]] || [[ "$UPLOAD_FINISHED" == "yes" ]]; then
     ok "✔ Uploaded successfully!"
   else
     error "✖ Unfinished upload, please rerun the command to resume." 1
   fi
-  info "URL: $TUSURL"
+
+  if [[ "$UPLOAD_FINISHED" != "yes" ]]; then
+    info "URL: $TUSURL"
+  fi
 }
 
 # argv parsing
@@ -264,4 +267,10 @@ while :; do
   [[ ${HEADERS[Upload-Offset]} -eq $SIZE ]] && exit
   request "--head $TUSURL" > /dev/null
   [[ ${HEADERS[Upload-Offset]} -eq $SIZE ]] || sleep 2
+
+  if [[ "${HEADERS[Status]}" == "404" ]] && [ ! -z $REMOTE_DIR ]; then
+    echo "The file had already moved to $REMOTE_DIR."
+    UPLOAD_FINISHED=yes
+    exit
+  fi
 done
