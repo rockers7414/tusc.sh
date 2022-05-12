@@ -58,6 +58,9 @@ usage()
                      $(line 'USER="my_user"' 36)
                      $(line 'PASS="my_pass"' 36)
     $(info "-C --no-color")  $(comment "Donot color the output (Useful for parsing output).")
+    $(info "-d --dir")       $(comment "The remote directory where the file be uploaded.")
+    $(info "--x-token")      $(comment "The token for representing logged-in user.")
+    $(info "--shared-drive") $(comment "The remote directory of the shared drive where the fille be uploaded.")
     $(info "-f --file")      $(comment "The file to upload.")
     $(info "-h --help")      $(comment "Show help information and usage.")
     $(info "-H --host")      $(comment "The tus-server host where file is uploaded.")
@@ -105,9 +108,10 @@ filepart() # $1 = start_byte, $2 = byte_length, $3 = file
 request()
 {
   echo > $HEADER
+  [[ $XTOKEN ]] && TOKEN="-H 'x-token: $XTOKEN' "
   [[ $CREDS ]] && USERPASS="--basic --user '$USER:$PASS' "
-  [[ $DEBUG ]] && comment "> curl ${USERPASS//:$PASS/}-sSLD $HEADER -H 'Tus-Resumable: 1.0.0' $1"
-  BODY=$(bash -c "curl $USERPASS-sSLD $HEADER -H 'Tus-Resumable: 1.0.0' $CURLARGS $1") HEADERS=()
+  [[ $DEBUG ]] && comment "> curl $TOKEN${USERPASS//:$PASS/}-sSLD $HEADER -H 'Tus-Resumable: 1.0.0' $1"
+  BODY=$(bash -c "curl $TOKEN$USERPASS-sSLD $HEADER -H 'Tus-Resumable: 1.0.0' $CURLARGS $1") HEADERS=()
 
   while IFS=':' read key value; do
     if [[ "${key:0:5}" == "HTTP/" ]]; then
@@ -172,6 +176,9 @@ while [[ $# -gt 0 ]]; do
     -c | --creds) CREDS="$2"; shift 2 ;;
     -C | --no-color) NOCOLOR=1; shift ;;
     -f | --file) FILE="$2"; shift 2 ;;
+    -d | --dir) REMOTE_DIR="$2"; shift 2 ;;
+    --x-token) XTOKEN="$2"; shift 2 ;;
+    --shared-drive) SHARED_DIR="$2"; shift 2 ;;
     -h | --help | help) usage $1; exit 0 ;;
     -H | --host) HOST="$2"; shift 2 ;;
     -L | --locate) LOCATE=1; shift ;;
@@ -224,6 +231,8 @@ else
   OFFSET=0 LEFTOVER=$SIZE FILEPART=$FILE
   META="filename $(echo -n $NAME | base64 -w 0)"
   [[ $CREDS ]] && META="$META,user $(echo -n $USER | base64 -w 0)"
+  [[ $REMOTE_DIR ]] && META="$META,dir $(echo -n $REMOTE_DIR | base64 -w 0)"
+  [[ $SHARED_DIR ]] && META="$META,shared-drive $(echo -n $SHARED_DIR | base64 -w 0)"
   request "-H 'Upload-Length: $SIZE' \
     -H 'Upload-Key: $KEY' \
     -H 'Upload-Checksum: $CHKSUM' \
@@ -232,6 +241,8 @@ else
 
   TUSURL=${HEADERS[Location]}
   [[ $TUSURL ]] || error "Tus server replied with empty location. Try changing --base-path param." 1
+
+  [[ $TUSURL == $HOST* ]] || TUSURL=$HOST$TUSURL
 
   # save location config
   tus-config ".[\"$KEY\"].location" "$TUSURL"
